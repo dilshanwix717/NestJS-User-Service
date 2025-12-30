@@ -1,0 +1,251 @@
+// This is your Prisma schema file for User Service
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================================================
+// USER PROFILE
+// ============================================================================
+// Stores user-domain data (NOT auth data)
+// Links to Auth Service via authUserId (UUID from Auth Service's users table)
+model UserProfile {
+  id String @id @default(uuid())
+
+  // Foreign key to Auth Service user (UUID)
+  // This is the ONLY link between User Service and Auth Service
+  authUserId String @unique
+
+  // Profile information
+  displayName String?
+  firstName   String?
+  lastName    String?
+  avatar      String? // URL to avatar image
+  bio         String?   @db.Text
+  country     String? // ISO country code (e.g., "US", "GB")
+  dateOfBirth DateTime?
+  phone       String?
+
+  // Audit fields
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime? // Soft delete timestamp
+  isDeleted Boolean   @default(false) // Soft delete flag
+  version   Int       @default(1) // Optimistic locking
+
+  // Relations
+  settings      UserSettings?
+  subscriptions Subscription[]
+  status        UserStatus?
+
+  @@index([authUserId])
+  @@index([isDeleted])
+  @@index([createdAt])
+  @@map("user_profiles")
+}
+
+// ============================================================================
+// USER SETTINGS
+// ============================================================================
+// User preferences and application settings
+model UserSettings {
+  id String @id @default(uuid())
+
+  // One-to-one relationship with UserProfile
+  userProfileId String      @unique
+  userProfile   UserProfile @relation(fields: [userProfileId], references: [id], onDelete: Cascade)
+
+  // Preferences
+  language             String  @default("en") // ISO language code
+  theme                String  @default("light") // light, dark, auto
+  timezone             String  @default("UTC")
+  emailNotifications   Boolean @default(true)
+  pushNotifications    Boolean @default(true)
+  smsNotifications     Boolean @default(false)
+  marketingEmails      Boolean @default(false)
+  autoplay             Boolean @default(true) // Video autoplay
+  videoQuality         String  @default("auto") // auto, 1080p, 720p, 480p
+  subtitlesEnabled     Boolean @default(false)
+  subtitlesLanguage    String  @default("en")
+  maturityRating       String  @default("PG-13") // Content filtering
+  dataSaverMode        Boolean @default(false)
+  twoFactorEnabled     Boolean @default(false)
+  sessionTimeout       Int     @default(3600) // seconds
+  privacyShowProfile   Boolean @default(true)
+  privacyShowActivity  Boolean @default(false)
+  privacyAllowMessages Boolean @default(true)
+
+  // Audit fields
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  isDeleted Boolean   @default(false)
+  version   Int       @default(1)
+
+  @@index([userProfileId])
+  @@index([isDeleted])
+  @@map("user_settings")
+}
+
+// ============================================================================
+// SUBSCRIPTION
+// ============================================================================
+// Base subscription structure - no billing/payment logic yet
+model Subscription {
+  id String @id @default(uuid())
+
+  // Foreign key to UserProfile
+  userProfileId String
+  userProfile   UserProfile @relation(fields: [userProfileId], references: [id], onDelete: Cascade)
+
+  // Subscription details
+  planType     String    @default("free") // free, basic, premium, family
+  status       String    @default("inactive") // inactive, active, suspended, canceled, expired
+  billingCycle String?   @default("monthly") // monthly, yearly, lifetime
+  startDate    DateTime  @default(now())
+  endDate      DateTime? // null for lifetime
+  renewalDate  DateTime? // Next billing date
+  canceledAt   DateTime? // When user canceled
+  suspendedAt  DateTime? // When suspended (e.g., payment failure)
+  trialEndsAt  DateTime? // Trial expiration
+  isAutoRenew  Boolean   @default(true)
+  isTrial      Boolean   @default(false)
+  maxDevices   Int       @default(1) // Concurrent device limit
+  maxProfiles  Int       @default(1) // Profile limit per account
+  canDownload  Boolean   @default(false) // Offline download permission
+  videoQuality String    @default("sd") // sd, hd, uhd
+  adsEnabled   Boolean   @default(true) // Show ads?
+
+  // Future extensibility fields (nullable for now)
+  externalSubscriptionId String? // For future payment gateway integration
+  paymentMethod          String? // For future: card, paypal, etc.
+  metadata               Json? // Flexible field for future data
+
+  // Audit fields
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  isDeleted Boolean   @default(false)
+  version   Int       @default(1)
+
+  @@index([userProfileId])
+  @@index([status])
+  @@index([planType])
+  @@index([endDate])
+  @@index([isDeleted])
+  @@map("subscriptions")
+}
+
+// ============================================================================
+// USER STATUS
+// ============================================================================
+// Track user account status (active, suspended, banned, etc.)
+model UserStatus {
+  id String @id @default(uuid())
+
+  // One-to-one relationship with UserProfile
+  userProfileId String      @unique
+  userProfile   UserProfile @relation(fields: [userProfileId], references: [id], onDelete: Cascade)
+
+  // Status information
+  status       String    @default("active") // active, suspended, banned, deactivated, pending_verification
+  reason       String? // Reason for suspension/ban
+  reasonDetail String?   @db.Text // Detailed explanation
+  actionedBy   String? // Admin/system user who took action
+  actionedAt   DateTime? // When action was taken
+  expiresAt    DateTime? // For temporary suspensions
+  notes        String?   @db.Text // Internal notes
+
+  // Flags for specific restrictions
+  canLogin           Boolean @default(true)
+  canStream          Boolean @default(true)
+  canComment         Boolean @default(true)
+  canUpload          Boolean @default(false) // For future creator features
+  canMessage         Boolean @default(true)
+  canPurchase        Boolean @default(true)
+  requiresKyc        Boolean @default(false) // Know Your Customer verification
+  isVerified         Boolean @default(false) // Verified account badge
+  isModerator        Boolean @default(false)
+  isContentCreator   Boolean @default(false)
+  isPremiumSupporter Boolean @default(false)
+
+  // Audit fields
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  isDeleted Boolean   @default(false)
+  version   Int       @default(1)
+
+  @@index([userProfileId])
+  @@index([status])
+  @@index([isDeleted])
+  @@map("user_statuses")
+}
+
+// ============================================================================
+// FUTURE EXTENSION PLACEHOLDERS (commented for reference)
+// ============================================================================
+// These tables can be added later without breaking existing schema:
+
+// model WatchHistory {
+//   id String @id @default(uuid())
+//   userProfileId String
+//   videoId String
+//   watchedAt DateTime
+//   progressSeconds Int
+//   completedPercentage Float
+//   deviceType String?
+//   ...
+// }
+
+// model UserPurchase {
+//   id String @id @default(uuid())
+//   userProfileId String
+//   itemType String // movie, episode, season
+//   itemId String
+//   amount Decimal
+//   currency String
+//   purchasedAt DateTime
+//   ...
+// }
+
+// model Transaction {
+//   id String @id @default(uuid())
+//   userProfileId String
+//   type String // payment, refund, credit
+//   amount Decimal
+//   status String
+//   ...
+// }
+
+// model UserRecommendation {
+//   id String @id @default(uuid())
+//   userProfileId String
+//   recommendedVideoId String
+//   score Float
+//   reason String
+//   ...
+// }
+
+// model Notification {
+//   id String @id @default(uuid())
+//   userProfileId String
+//   type String
+//   message String
+//   readAt DateTime?
+//   ...
+// }
+
+// model UserDevice {
+//   id String @id @default(uuid())
+//   userProfileId String
+//   deviceId String
+//   deviceName String
+//   lastActiveAt DateTime
+//   ...
+// }
