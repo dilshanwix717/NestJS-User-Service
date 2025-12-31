@@ -258,7 +258,7 @@ export class ProfileService {
    * Check if authUserId exists in Auth Service
    * This should call Auth Service via RPC in production
    */
-  async validateAuthUser(authUserId: string): Promise<boolean> {
+  validateAuthUser(authUserId: string): Promise<boolean> {
     // TODO: Implement RPC call to Auth Service
     // Example:
     // const result = await this.authServiceClient.send('validate-user', { userId: authUserId }).toPromise();
@@ -267,6 +267,6 @@ export class ProfileService {
     this.logger.warn(
       `Auth validation not implemented. Assuming authUserId is valid: ${authUserId}`,
     );
-    return true;
+    return Promise.resolve(true);
   }
 }

@@ -1,5 +1,6 @@
 // FILE: apps/user-service/src/app.module.ts
 import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
 import { PrismaModule } from './prisma/prisma.module';
 import { ProfileModule } from './profile/profile.module';
 import { SettingsModule } from './settings/settings.module';
@@ -16,6 +17,9 @@ import { StatusModule } from './status/status.module';
  */
 @Module({
   imports: [
+    // Load environment variables from .env file
+    ConfigModule.forRoot({ isGlobal: true }),
+
     // Prisma ORM service for database operations
     PrismaModule,
 
