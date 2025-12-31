@@ -1,4 +1,3 @@
-// FILE: apps/user-service/src/prisma/prisma.service.ts
 /**
  * PrismaService
  * --------------
@@ -15,7 +14,6 @@ import {
   OnModuleDestroy,
   Logger,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
@@ -23,95 +21,63 @@ import { Pool } from 'pg';
 /**
  * PrismaService
  * --------------------
- * Wraps PrismaClient and provides it throughout the application.
+ * Extends PrismaClient so repositories/services can directly access:
+ * - this.userProfile.findMany()
+ * - this.userSettings.update()
+ * - this.$transaction()
  *
- * Implements OnModuleInit - Runs logic when NestJS finishes initializing the module.
- * Implements OnModuleDestroy - Runs cleanup logic when NestJS shuts down the application.
+ * Implements:
+ * - OnModuleInit: connect to DB on startup
+ * - OnModuleDestroy: disconnect cleanly on shutdown
  */
 @Injectable()
-export class PrismaService implements OnModuleInit, OnModuleDestroy {
+export class PrismaService
+  extends PrismaClient
+  implements OnModuleInit, OnModuleDestroy
+{
   /**
    * Logger instance scoped to this service
-   * Example log output: [PrismaService] Database connected successfully
    */
   private readonly logger = new Logger(PrismaService.name);
 
   /**
-   * Prisma client instance - initialized in onModuleInit
+   * Constructor
+   * -----------
+   * Initializes PostgreSQL connection pool
+   * and passes it to Prisma via PrismaPg adapter.
    */
-  private _client!: PrismaClient;
-
-  constructor(private readonly configService: ConfigService) {}
-
-  /**
-   * Getter to access the Prisma client
-   */
-  get client(): PrismaClient {
-    return this._client;
-  }
-
-  // Proxy common Prisma properties for backward compatibility
-  get userProfile() {
-    return this._client.userProfile;
-  }
-
-  get userSettings() {
-    return this._client.userSettings;
-  }
-
-  get userStatus() {
-    return this._client.userStatus;
-  }
-
-  get subscription() {
-    return this._client.subscription;
-  }
-
-  /**
-   * Execute a transaction
-   */
-  $transaction<T>(fn: Parameters<PrismaClient['$transaction']>[0]): Promise<T> {
-    return this._client.$transaction(fn) as Promise<T>;
-  }
-
-  /**
-   * onModuleInit() - Automatically called by NestJS when the module is initialized.
-   * Purpose:
-   * - Initialize Prisma client with database connection
-   * - Establish database connection
-   * - Fail early if the database is unreachable
-   */
-  async onModuleInit(): Promise<void> {
-    const databaseUrl = this.configService.get<string>('DATABASE_URL');
+  constructor() {
+    const databaseUrl = process.env.DATABASE_URL;
 
     if (!databaseUrl) {
       throw new Error('Missing required environment variable: DATABASE_URL');
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- pg Pool typing limitation
-    const pool: Pool = new Pool({ connectionString: databaseUrl });
-
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- @prisma/adapter-pg typing limitation
-    const adapter: PrismaPg = new PrismaPg(pool);
-
-    this._client = new PrismaClient({
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Prisma adapter typing limitation
-      adapter,
-      log: ['query', 'info', 'warn', 'error'],
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+    const pool = new Pool({
+      connectionString: databaseUrl,
     });
 
-    await this._client.$connect();
+    super({
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      adapter: new PrismaPg(pool),
+      log: ['query', 'info', 'warn', 'error'],
+    });
+  }
+
+  /**
+   * Called once the NestJS module has been initialized
+   */
+  async onModuleInit(): Promise<void> {
+    await this.$connect();
     this.logger.log('✅ User Service Database connected successfully');
   }
 
   /**
-   * onModuleDestroy() - Automatically called by NestJS during app shutdown.
-   * Purpose:
-   * - Gracefully close database connections
-   * - Prevent open handles and memory leaks
+   * Called during NestJS application shutdown
    */
   async onModuleDestroy(): Promise<void> {
-    await this._client.$disconnect();
+    await this.$disconnect();
     this.logger.log('User Service Database disconnected');
   }
 }
